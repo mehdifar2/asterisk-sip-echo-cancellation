@@ -1,0 +1,8 @@
+*.o
+*.so
+lec_replay
+# Captures and audio contain call content: never commit them.
+*.pcap
+*.pcapng
+*.raw
+*.wav

@@ -1,0 +1,36 @@
+; Echo cancellation on SIP trunk calls with func_lec.
+;
+; The canceller must sit on the TRUNK (carrier) channel: there, audio written to the
+; carrier is the reference, and audio read from the carrier contains the echo.
+; The usual way to get onto that channel is a Dial pre-dial handler: b(context^exten^prio).
+;
+; Switches (AstDB), all checked per call, no reload needed:
+;   database put LEC enabled 1        master switch (0 = off for every new call)
+;   database put LEC all 1            all extensions
+;   database put LEC/ext 1001 1       or only selected extensions
+;   database del LEC all              back to the selected list
+
+; ---------------------------------------------------------------------------
+; 1) Plain Asterisk: add the pre-dial handler to your trunk Dial().
+; ---------------------------------------------------------------------------
+[outbound-example]
+exten => _0X.,1,Set(LEC_OPTS=${IF($["${DB(LEC/enabled)}" = "1" & "${IFMODULE(func_lec.so)}" = "1"]?b(lec-attach^s^1))})
+ same => n,Dial(PJSIP/${EXTEN}@my-carrier,60,${LEC_OPTS})
+ same => n,Hangup()
+
+; ---------------------------------------------------------------------------
+; 2) FreePBX / IssabelPBX: use the predial hook (extensions_custom.conf).
+;    DIAL_TRUNK is the trunk id from the GUI (see OUT_<id> in extensions_additional.conf),
+;    AMPUSER is the calling extension. Replace 3 and 4 with your carrier trunk ids.
+; ---------------------------------------------------------------------------
+[macro-dialout-trunk-predial-hook]
+exten => s,1,ExecIf($["${DB(LEC/enabled)}" = "1" & ("${DIAL_TRUNK}" = "3" | "${DIAL_TRUNK}" = "4") & ("${DB(LEC/ext/${AMPUSER})}" = "1" | "${DB(LEC/all)}" = "1") & "${IFMODULE(func_lec.so)}" = "1"]?Set(DIAL_TRUNK_OPTIONS=${DIAL_TRUNK_OPTIONS}b(lec-attach^s^1)))
+ same => n,MacroExit()
+
+; ---------------------------------------------------------------------------
+; Pre-dial handler: runs on the new trunk channel before it dials.
+; IFMODULE makes calls skip the canceller (without errors) if the module is not loaded.
+; ---------------------------------------------------------------------------
+[lec-attach]
+exten => s,1,ExecIf($["${IFMODULE(func_lec.so)}" = "1"]?Set(LEC()=on))
+ same => n,Return()
